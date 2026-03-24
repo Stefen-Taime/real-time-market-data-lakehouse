@@ -1,6 +1,6 @@
 # Real-Time Market Data Lakehouse
 
-Scaffold initial pour une plateforme de donnees de marche en temps reel construite autour d'une architecture Bronze / Silver / Gold.
+Scaffold initial pour une plateforme de donnees de marche en temps reel construite autour d'une architecture Bronze / Silver / Gold, avec deploiement GitHub Actions vers Databricks.
 
 ## Structure
 
