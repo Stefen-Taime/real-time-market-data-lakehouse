@@ -1,0 +1,24 @@
+bundle:
+  name: real-time-market-data-lakehouse
+  databricks_cli_version: ">= 0.218.0"
+
+include:
+  - resources/volumes/market_data_app_volume.yml
+  - resources/jobs/backfill_history.yml
+  - resources/jobs/ingest_live_market.yml
+  - resources/jobs/transform_silver.yml
+  - resources/jobs/build_gold_metrics.yml
+  - resources/jobs/data_quality_checks.yml
+  - resources/jobs/quality_audit_report.yml
+  - resources/jobs/market_observability_report.yml
+  - resources/jobs/market_observability_dashboard_refresh.yml
+  - resources/jobs/publish_app_serving_layer.yml
+  - resources/jobs/debug_app_data_plane.yml
+  - resources/jobs/market_data_medallion_pipeline.yml
+  - resources/jobs/market_data_medallion_pipeline_governed.yml
+  - resources/apps/market_observability_app.yml
+
+targets:
+  dev:
+    default: true
+    mode: development

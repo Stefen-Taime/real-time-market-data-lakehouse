@@ -1,0 +1,19 @@
+[project]
+name = "real-time-market-data-lakehouse"
+version = "0.1.0"
+description = "Scaffold for a real-time market data lakehouse."
+requires-python = ">=3.11"
+dependencies = [
+  "databricks-sdk",
+  "delta-spark",
+  "pandas",
+  "plotly",
+  "pyspark",
+  "streamlit",
+  "pyyaml",
+  "websocket-client",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

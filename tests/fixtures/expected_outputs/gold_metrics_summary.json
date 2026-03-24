@@ -1,0 +1,16 @@
+{
+  "latest_prices": {
+    "BTCUSDT": 65050.0,
+    "ETHUSDT": 3535.0
+  },
+  "top_movers": [
+    {
+      "symbol": "ETHUSDT",
+      "move_pct": 1.28571429
+    },
+    {
+      "symbol": "BTCUSDT",
+      "move_pct": 0.61538462
+    }
+  ]
+}

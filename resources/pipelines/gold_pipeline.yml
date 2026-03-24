@@ -1,0 +1,5 @@
+resources:
+  pipelines:
+    gold_pipeline:
+      name: gold_pipeline
+      libraries: []

@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    ingest_live_market:
+      name: ingest_live_market_${bundle.target}
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+              - websocket-client
+      tasks:
+        - task_key: ingest_live_market
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/02_ingest_live_market.py
+            base_parameters:
+              env: dev
+              source_mode: binance_ws
+              stream_types: trade,kline
+              kline_interval: "1m"
+              max_messages: "200"
+              duration_seconds: "60"
+              write_silver: "false"

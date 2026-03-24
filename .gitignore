@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Local env
+.env
+.DS_Store
+
+# Databricks
+.databricks/

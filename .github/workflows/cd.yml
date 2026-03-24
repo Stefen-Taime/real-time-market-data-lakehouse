@@ -1,0 +1,63 @@
+name: CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_smoke_job:
+        description: "Run a lightweight Databricks job after deploy"
+        required: false
+        default: true
+        type: boolean
+      smoke_job_name:
+        description: "Bundle job name to run as smoke test"
+        required: false
+        default: market_observability_report
+        type: string
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Check Databricks credentials
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          test -n "${DATABRICKS_HOST}" || { echo "Missing GitHub secret DATABRICKS_HOST"; exit 1; }
+          test -n "${DATABRICKS_TOKEN}" || { echo "Missing GitHub secret DATABRICKS_TOKEN"; exit 1; }
+
+      - name: Validate bundle
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: ./scripts/validate_bundle.sh dev
+
+      - name: Deploy bundle
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: ./scripts/deploy_bundle.sh dev
+
+      - name: Run smoke job
+        if: github.event_name == 'push' || inputs.run_smoke_job == true
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          SMOKE_JOB_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_job_name || 'market_observability_report' }}
+        run: databricks bundle run "${SMOKE_JOB_NAME}" -t dev

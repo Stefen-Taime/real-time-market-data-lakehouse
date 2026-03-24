@@ -1,0 +1,21 @@
+environment: dev
+mode: development
+
+workspace:
+  target: dev
+  catalog_suffix: _dev
+
+paths:
+  history_input_path: tests/fixtures/sample_klines.json
+  live_input_path: tests/fixtures/sample_live_market.json
+  delta_base_path: dbfs:/tmp/real-time-market-data-lakehouse/dev
+
+databricks:
+  register_tables: false
+  table_format: delta
+  write_modes:
+    history: overwrite
+    live: append
+    silver: merge
+    gold: merge
+    audit: append

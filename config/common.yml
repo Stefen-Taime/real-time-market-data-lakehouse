@@ -1,0 +1,337 @@
+project_name: real-time-market-data-lakehouse
+catalog: market_data
+
+schemas:
+  bronze: bronze
+  silver: silver
+  gold: gold
+  audit: audit
+
+tables:
+  bronze:
+    trades_live_raw: trades_live_raw
+    klines_history_raw: klines_history_raw
+    klines_live_raw: klines_live_raw
+  silver:
+    trades: trades
+    klines_1m: klines_1m
+  gold:
+    latest_price: latest_price
+    volume_1m: volume_1m
+    volatility_5m: volatility_5m
+    top_movers: top_movers
+  audit:
+    quality_check_runs: quality_check_runs
+    processing_state: processing_state
+
+market_source:
+  exchange: binance
+  history_interval: 1m
+  live_event_types:
+    - trade
+    - kline
+  live:
+    source_mode: binance_ws
+    websocket_base_url: wss://data-stream.binance.vision
+    stream_types:
+      - trade
+      - kline
+    kline_interval: 1m
+    max_messages: 200
+    duration_seconds: 60
+    receive_timeout_seconds: 5
+
+processing:
+  volatility_window_size: 5
+  top_movers_limit: 10
+  incremental:
+    overlap_seconds: 120
+    watermark_column: ingested_at
+
+quality:
+  fail_on_error: true
+  datasets:
+    - name: bronze_trades_live_raw
+      layer: bronze
+      table_key: trades_live_raw
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - trade_id
+        - price
+        - quantity
+        - trade_time
+        - event_time
+      null_thresholds:
+        symbol: 0.0
+        trade_id: 0.0
+        price: 0.0
+        quantity: 0.0
+        trade_time: 0.0
+        event_time: 0.0
+      duplicate_key_columns:
+        - symbol
+        - trade_id
+      max_duplicate_count: 0
+      freshness:
+        column: event_time
+        max_age_seconds: 900
+      column_bounds:
+        price:
+          min: 0.0
+        quantity:
+          min: 0.0
+    - name: bronze_klines_history_raw
+      layer: bronze
+      table_key: klines_history_raw
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - interval
+        - open_time
+        - close_time
+        - open
+        - high
+        - low
+        - close
+        - volume
+      null_thresholds:
+        symbol: 0.0
+        interval: 0.0
+        open_time: 0.0
+        close_time: 0.0
+        open: 0.0
+        high: 0.0
+        low: 0.0
+        close: 0.0
+        volume: 0.0
+      duplicate_key_columns:
+        - symbol
+        - interval
+        - open_time
+      max_duplicate_count: 0
+      column_bounds:
+        open:
+          min: 0.0
+        high:
+          min: 0.0
+        low:
+          min: 0.0
+        close:
+          min: 0.0
+        volume:
+          min: 0.0
+    - name: bronze_klines_live_raw
+      layer: bronze
+      table_key: klines_live_raw
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - interval
+        - open_time
+        - close_time
+        - open
+        - high
+        - low
+        - close
+        - volume
+        - event_time
+      null_thresholds:
+        symbol: 0.0
+        interval: 0.0
+        open_time: 0.0
+        close_time: 0.0
+        open: 0.0
+        high: 0.0
+        low: 0.0
+        close: 0.0
+        volume: 0.0
+        event_time: 0.0
+      duplicate_key_columns:
+        - symbol
+        - interval
+        - open_time
+      max_duplicate_count: 0
+      freshness:
+        column: event_time
+        max_age_seconds: 900
+      column_bounds:
+        open:
+          min: 0.0
+        high:
+          min: 0.0
+        low:
+          min: 0.0
+        close:
+          min: 0.0
+        volume:
+          min: 0.0
+    - name: silver_trades
+      layer: silver
+      table_key: trades
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - trade_id
+        - price
+        - quantity
+        - trade_time
+        - event_time
+        - ingested_at
+        - notional
+      null_thresholds:
+        symbol: 0.0
+        trade_id: 0.0
+        price: 0.0
+        quantity: 0.0
+        trade_time: 0.0
+        event_time: 0.0
+        ingested_at: 0.0
+        notional: 0.0
+      duplicate_key_columns:
+        - symbol
+        - trade_id
+      max_duplicate_count: 0
+      freshness:
+        column: trade_time
+        max_age_seconds: 900
+      column_bounds:
+        price:
+          min: 0.0
+        quantity:
+          min: 0.0
+        notional:
+          min: 0.0
+    - name: silver_klines_1m
+      layer: silver
+      table_key: klines_1m
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - interval
+        - open_time
+        - close_time
+        - open
+        - high
+        - low
+        - close
+        - volume
+        - ingested_at
+      null_thresholds:
+        symbol: 0.0
+        interval: 0.0
+        open_time: 0.0
+        close_time: 0.0
+        open: 0.0
+        high: 0.0
+        low: 0.0
+        close: 0.0
+        volume: 0.0
+        ingested_at: 0.0
+      duplicate_key_columns:
+        - symbol
+        - interval
+        - open_time
+      max_duplicate_count: 0
+      column_bounds:
+        open:
+          min: 0.0
+        high:
+          min: 0.0
+        low:
+          min: 0.0
+        close:
+          min: 0.0
+        volume:
+          min: 0.0
+    - name: gold_latest_price
+      layer: gold
+      table_key: latest_price
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - latest_price
+        - trade_time
+      null_thresholds:
+        symbol: 0.0
+        latest_price: 0.0
+        trade_time: 0.0
+      freshness:
+        column: trade_time
+        max_age_seconds: 900
+      column_bounds:
+        latest_price:
+          min: 0.0
+    - name: gold_volume_1m
+      layer: gold
+      table_key: volume_1m
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - window_start
+        - volume_1m
+        - notional_1m
+        - trade_count
+      null_thresholds:
+        symbol: 0.0
+        window_start: 0.0
+        volume_1m: 0.0
+        notional_1m: 0.0
+        trade_count: 0.0
+      freshness:
+        column: window_start
+        max_age_seconds: 900
+      column_bounds:
+        volume_1m:
+          min: 0.0
+        notional_1m:
+          min: 0.0
+        trade_count:
+          min: 1.0
+    - name: gold_volatility_5m
+      layer: gold
+      table_key: volatility_5m
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - window_start
+        - window_end
+        - observation_count
+        - volatility_5m
+      null_thresholds:
+        symbol: 0.0
+        window_start: 0.0
+        window_end: 0.0
+        observation_count: 0.0
+        volatility_5m: 0.0
+      column_bounds:
+        observation_count:
+          min: 5.0
+        volatility_5m:
+          min: 0.0
+    - name: gold_top_movers
+      layer: gold
+      table_key: top_movers
+      min_row_count: 1
+      required_columns:
+        - symbol
+        - window_start
+        - window_end
+        - start_price
+        - end_price
+        - move_pct
+      null_thresholds:
+        symbol: 0.0
+        window_start: 0.0
+        window_end: 0.0
+        start_price: 0.0
+        end_price: 0.0
+        move_pct: 0.0
+      column_bounds:
+        start_price:
+          min: 0.0
+        end_price:
+          min: 0.0
+
+checkpoints:
+  root: dbfs:/checkpoints/real-time-market-data-lakehouse

@@ -1,0 +1,21 @@
+resources:
+  jobs:
+    publish_app_serving_layer:
+      name: publish_app_serving_layer_${bundle.target}
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+      tasks:
+        - task_key: publish_app_serving_layer
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/08_publish_app_serving_layer.py
+            base_parameters:
+              env: dev_app

@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    build_gold_metrics:
+      name: build_gold_metrics_${bundle.target}
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+      tasks:
+        - task_key: build_gold_metrics
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/04_build_gold.py
+            base_parameters:
+              env: dev
+              write_mode: merge
+              volatility_window_size: "5"
+              top_movers_limit: "10"

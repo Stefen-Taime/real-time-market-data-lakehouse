@@ -1,0 +1,25 @@
+resources:
+  jobs:
+    market_observability_dashboard_refresh:
+      name: market_observability_dashboard_refresh_${bundle.target}
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+      tasks:
+        - task_key: market_observability_dashboard_refresh
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/10_market_observability_dashboard.py
+            base_parameters:
+              env: dev_governed
+              limit: "20"
+              lookback_hours: "6"
+              top_n: "10"
+              symbols: ""

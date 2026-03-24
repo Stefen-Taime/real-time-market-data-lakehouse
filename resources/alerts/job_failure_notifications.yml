@@ -1,0 +1,15 @@
+notification_policy:
+  name: job_failure_notifications
+  mechanism: databricks_job_email_notifications
+  applies_to_jobs:
+    - backfill_history
+    - ingest_live_market
+    - transform_silver
+    - build_gold_metrics
+    - data_quality_checks
+    - market_data_medallion_pipeline
+  recipients:
+    - ${workspace.current_user.userName}
+  conditions:
+    - task_failed
+    - job_failed

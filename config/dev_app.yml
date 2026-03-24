@@ -1,0 +1,46 @@
+environment: dev_app
+mode: development
+
+catalog: workspace
+
+workspace:
+  target: dev
+
+volume:
+  catalog: workspace
+  schema: default
+  name: market_data_app
+
+serving_tables:
+  catalog: workspace
+  schema: default
+  names:
+    gold_latest_price: app_gold_latest_price
+    gold_volume_1m: app_gold_volume_1m
+    gold_volatility_5m: app_gold_volatility_5m
+    gold_top_movers: app_gold_top_movers
+    audit_quality_check_runs: app_audit_quality_check_runs
+    audit_processing_state: app_audit_processing_state
+
+paths:
+  source_delta_base_path: dbfs:/tmp/real-time-market-data-lakehouse/dev
+  delta_base_path: dbfs:/Volumes/workspace/default/market_data_app/dev
+
+databricks:
+  register_tables: false
+  table_format: delta
+  write_modes:
+    serving: overwrite
+
+app:
+  warehouse_id: 38144212fd15dd19
+  query_mode: table
+  volume_path: /Volumes/workspace/default/market_data_app
+  serving_base_path: /Volumes/workspace/default/market_data_app/dev
+  serving_catalog: workspace
+  serving_schema: default
+  serving_volume_history_hours: 24
+  sql_insert_batch_size: 200
+  default_limit: 25
+  default_volume_hours: 6
+  default_top_movers_limit: 10

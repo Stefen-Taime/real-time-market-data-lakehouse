@@ -1,0 +1,29 @@
+resources:
+  jobs:
+    data_quality_checks:
+      name: data_quality_checks_${bundle.target}
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0/15 * * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+      tasks:
+        - task_key: data_quality_checks
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/05_data_quality_checks.py
+            base_parameters:
+              env: dev
+              fail_on_error: "true"
+              audit_run_id: "{{job.run_id}}"
+              job_name: "{{job.name}}"
+              task_name: "{{task.name}}"

@@ -1,0 +1,45 @@
+environment: dev_governed
+mode: development
+
+catalog: workspace
+
+schemas:
+  bronze: default
+  silver: default
+  gold: default
+  audit: default
+
+tables:
+  bronze:
+    trades_live_raw: bronze_trades_live_raw
+    klines_history_raw: bronze_klines_history_raw
+    klines_live_raw: bronze_klines_live_raw
+  silver:
+    trades: silver_trades
+    klines_1m: silver_klines_1m
+  gold:
+    latest_price: gold_latest_price
+    volume_1m: gold_volume_1m
+    volatility_5m: gold_volatility_5m
+    top_movers: gold_top_movers
+  audit:
+    quality_check_runs: audit_quality_check_runs
+    processing_state: audit_processing_state
+
+workspace:
+  target: dev
+
+paths:
+  history_input_path: tests/fixtures/sample_klines.json
+  live_input_path: tests/fixtures/sample_live_market.json
+  delta_base_path:
+
+databricks:
+  register_tables: true
+  table_format: delta
+  write_modes:
+    history: overwrite
+    live: append
+    silver: merge
+    gold: merge
+    audit: append

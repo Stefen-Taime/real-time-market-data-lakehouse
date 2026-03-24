@@ -1,0 +1,15 @@
+notification_policy:
+  name: data_quality_alerts
+  mechanism: scheduled_data_quality_job_on_failure
+  source_job: data_quality_checks
+  schedule:
+    quartz_cron_expression: "0 0/15 * * * ?"
+    timezone_id: UTC
+    pause_status: UNPAUSED
+  recipients:
+    - ${workspace.current_user.userName}
+  conditions:
+    - freshness_threshold_exceeded
+    - null_threshold_exceeded
+    - duplicate_threshold_exceeded
+    - row_count_below_minimum

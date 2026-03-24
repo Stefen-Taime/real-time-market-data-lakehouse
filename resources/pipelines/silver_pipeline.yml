@@ -1,0 +1,5 @@
+resources:
+  pipelines:
+    silver_pipeline:
+      name: silver_pipeline
+      libraries: []

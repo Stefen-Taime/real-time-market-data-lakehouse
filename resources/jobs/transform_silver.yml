@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    transform_silver:
+      name: transform_silver_${bundle.target}
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+      tasks:
+        - task_key: transform_silver
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/03_transform_silver.py
+            base_parameters:
+              env: dev
+              write_mode: merge
+              transform_trades: "true"
+              transform_klines: "true"

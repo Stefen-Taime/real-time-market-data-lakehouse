@@ -1,0 +1,22 @@
+resources:
+  jobs:
+    backfill_history:
+      name: backfill_history_${bundle.target}
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+      tasks:
+        - task_key: backfill_history
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../notebooks/01_backfill_history.py
+            base_parameters:
+              env: dev
+              write_silver: "false"

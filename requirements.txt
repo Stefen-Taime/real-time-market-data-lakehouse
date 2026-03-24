@@ -1,0 +1,9 @@
+databricks-sdk
+delta-spark
+pandas
+plotly
+pyspark
+pyyaml
+pytest
+streamlit
+websocket-client

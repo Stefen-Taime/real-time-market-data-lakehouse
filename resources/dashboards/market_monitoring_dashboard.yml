@@ -1,0 +1,4 @@
+dashboard:
+  name: market_monitoring_dashboard
+  display_name: Market Monitoring Dashboard
+  description: Free Edition friendly market observability entrypoint backed by notebook 07 and SQL analytics for Gold, quality and processing-state monitoring.
