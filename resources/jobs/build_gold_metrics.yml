@@ -18,7 +18,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/04_build_gold.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               write_mode: merge
               volatility_window_size: "5"
               top_movers_limit: "10"

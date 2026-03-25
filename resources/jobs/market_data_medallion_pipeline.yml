@@ -24,7 +24,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/01_backfill_history.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               write_silver: "false"
         - task_key: ingest_live_market
           depends_on:
@@ -33,7 +33,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/02_ingest_live_market.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               source_mode: binance_ws
               stream_types: trade,kline
               kline_interval: "1m"
@@ -47,7 +47,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/03_transform_silver.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               write_mode: merge
               transform_trades: "true"
               transform_klines: "true"
@@ -58,7 +58,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/04_build_gold.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               write_mode: merge
               volatility_window_size: "5"
               top_movers_limit: "10"
@@ -69,7 +69,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/05_data_quality_checks.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               fail_on_error: "true"
               audit_run_id: "{{job.run_id}}"
               job_name: "{{job.name}}"
@@ -81,4 +81,4 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/08_publish_app_serving_layer.py
             base_parameters:
-              env: dev_app
+              env: ${var.app_config_env}

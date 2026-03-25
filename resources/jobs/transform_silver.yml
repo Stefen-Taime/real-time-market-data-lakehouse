@@ -18,7 +18,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/03_transform_silver.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               write_mode: merge
               transform_trades: "true"
               transform_klines: "true"

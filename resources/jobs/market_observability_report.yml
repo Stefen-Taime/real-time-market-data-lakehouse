@@ -18,5 +18,5 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/07_market_observability_report.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               limit: "20"

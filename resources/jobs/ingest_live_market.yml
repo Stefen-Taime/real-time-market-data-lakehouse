@@ -19,7 +19,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/02_ingest_live_market.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               source_mode: binance_ws
               stream_types: trade,kline
               kline_interval: "1m"

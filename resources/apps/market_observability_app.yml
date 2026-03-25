@@ -1,7 +1,7 @@
 resources:
   apps:
     market_observability_app:
-      name: market-observability-app-${bundle.target}
+      name: mkt-obs-${bundle.target}
       description: Streamlit and Plotly app for monitoring Gold metrics, quality, and processing state.
       source_code_path: ../../apps/market_observability_streamlit
       config:
@@ -15,7 +15,7 @@ resources:
           - 0.0.0.0
         env:
           - name: APP_ENV
-            value: dev_app
+            value: ${var.app_config_env}
           - name: MARKET_DATA_QUERY_MODE
             value: table
           - name: DATABRICKS_WAREHOUSE_ID
@@ -23,7 +23,7 @@ resources:
           - name: MARKET_DATA_VOLUME_PATH
             value_from: market-data-volume
           - name: MARKET_DATA_SERVING_BASE_PATH
-            value: /Volumes/workspace/default/market_data_app/dev
+            value: ${var.app_serving_base_path}
           - name: MARKET_DATA_SERVING_CATALOG
             value: workspace
           - name: MARKET_DATA_SERVING_SCHEMA
@@ -40,5 +40,5 @@ resources:
         - name: market-data-volume
           uc_securable:
             securable_type: VOLUME
-            securable_full_name: ${resources.volumes.market_data_app_volume.catalog_name}.${resources.volumes.market_data_app_volume.schema_name}.${resources.volumes.market_data_app_volume.name}
+            securable_full_name: workspace.default.market_data_app
             permission: READ_VOLUME

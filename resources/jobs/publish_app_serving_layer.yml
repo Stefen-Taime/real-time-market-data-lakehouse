@@ -18,4 +18,4 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/08_publish_app_serving_layer.py
             base_parameters:
-              env: dev_app
+              env: ${var.app_config_env}

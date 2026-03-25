@@ -1,0 +1,21 @@
+environment: staging
+mode: development
+
+workspace:
+  target: staging
+  catalog_suffix: _staging
+
+paths:
+  history_input_path: tests/fixtures/sample_klines.json
+  live_input_path: tests/fixtures/sample_live_market.json
+  delta_base_path: dbfs:/tmp/real-time-market-data-lakehouse/staging
+
+databricks:
+  register_tables: false
+  table_format: delta
+  write_modes:
+    history: overwrite
+    live: append
+    silver: merge
+    gold: merge
+    audit: append

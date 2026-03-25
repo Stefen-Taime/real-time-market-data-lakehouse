@@ -3,6 +3,15 @@ name: CD
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Bundle target to deploy"
+        required: false
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
       run_smoke_job:
         description: "Run a lightweight Databricks job after deploy"
         required: false
@@ -27,6 +36,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      BUNDLE_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'dev' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,13 +57,13 @@ jobs:
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: ./scripts/validate_bundle.sh dev
+        run: ./scripts/validate_bundle.sh "${BUNDLE_TARGET}"
 
       - name: Deploy bundle
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: ./scripts/deploy_bundle.sh dev
+        run: ./scripts/deploy_bundle.sh "${BUNDLE_TARGET}"
 
       - name: Run smoke job
         if: github.event_name == 'push' || inputs.run_smoke_job == true
@@ -60,4 +71,4 @@ jobs:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           SMOKE_JOB_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_job_name || 'market_observability_report' }}
-        run: databricks bundle run "${SMOKE_JOB_NAME}" -t dev
+        run: databricks bundle run "${SMOKE_JOB_NAME}" -t "${BUNDLE_TARGET}"

@@ -2,18 +2,23 @@
 
 ## Bronze
 
-- `raw_trades`
-- `raw_klines`
+- `trades_live_raw`
+- `klines_history_raw`
+- `klines_live_raw`
 
 ## Silver
 
-- `silver_trades`
-- `silver_klines`
-- `silver_market_enriched`
+- `trades`
+- `klines_1m`
 
 ## Gold
 
-- `price_latest`
+- `latest_price`
 - `volume_1m`
 - `volatility_5m`
 - `top_movers`
+
+## Audit
+
+- `quality_check_runs`
+- `processing_state`

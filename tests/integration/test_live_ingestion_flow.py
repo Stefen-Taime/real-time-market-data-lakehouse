@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+import sys
+import types
 
 from src.ingestion.ingest_binance_live import (
     build_combined_stream_url,
@@ -74,3 +77,60 @@ def test_live_ingestion_flow_supports_mixed_trade_and_kline_events() -> None:
     assert len(silver_kline_records) == 2
     assert all(record["is_closed"] for record in silver_kline_records)
     assert [record["symbol"] for record in silver_kline_records] == ["BTCUSDT", "ETHUSDT"]
+
+
+def test_live_ingestion_flow_retries_websocket_connections(monkeypatch) -> None:
+    attempts = {"count": 0}
+
+    class DummySocket:
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def recv(self) -> str:
+            return json.dumps(
+                {
+                    "stream": "btcusdt@trade",
+                    "data": {
+                        "e": "trade",
+                        "E": 1711281060000,
+                        "s": "BTCUSDT",
+                        "t": 2001,
+                        "p": "64125.10",
+                        "q": "0.005",
+                        "b": 3001,
+                        "a": 3002,
+                        "T": 1711281060000,
+                        "m": False,
+                        "M": True,
+                    },
+                }
+            )
+
+        def close(self) -> None:
+            return None
+
+    def create_connection(*_args, **_kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise TimeoutError("transient websocket timeout")
+        return DummySocket()
+
+    monkeypatch.setitem(sys.modules, "websocket", types.SimpleNamespace(create_connection=create_connection))
+
+    bronze_records, source_details = load_live_records(
+        source_mode="binance_ws",
+        input_path=None,
+        symbols=["BTCUSDT"],
+        stream_types=["trade"],
+        kline_interval="1m",
+        websocket_base_url="wss://data-stream.binance.vision",
+        max_messages=1,
+        duration_seconds=None,
+        receive_timeout_seconds=0.1,
+        connect_retries=2,
+        retry_backoff_seconds=0.0,
+    )
+
+    assert len(bronze_records) == 1
+    assert source_details["connection_attempts"] == 2
+    assert source_details["connect_retries"] == 2

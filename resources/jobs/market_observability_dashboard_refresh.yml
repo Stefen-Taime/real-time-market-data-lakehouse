@@ -18,7 +18,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/10_market_observability_dashboard.py
             base_parameters:
-              env: dev_governed
+              env: ${var.governed_config_env}
               limit: "20"
               lookback_hours: "6"
               top_n: "10"

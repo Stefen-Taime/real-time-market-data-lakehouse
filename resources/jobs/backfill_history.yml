@@ -18,5 +18,5 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/01_backfill_history.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               write_silver: "false"

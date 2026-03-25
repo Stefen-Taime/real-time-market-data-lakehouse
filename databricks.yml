@@ -2,8 +2,21 @@ bundle:
   name: real-time-market-data-lakehouse
   databricks_cli_version: ">= 0.218.0"
 
+variables:
+  data_config_env:
+    description: Configuration profile used by batch, live, silver, gold and reporting jobs.
+    default: dev
+  governed_config_env:
+    description: Configuration profile used by governed pipeline runs and notebook dashboards.
+    default: dev_governed
+  app_config_env:
+    description: Configuration profile used by the Streamlit app serving publisher and app runtime.
+    default: dev_app
+  app_serving_base_path:
+    description: Unity Catalog volume path exposed to the Streamlit app.
+    default: /Volumes/workspace/default/market_data_app/dev
+
 include:
-  - resources/volumes/market_data_app_volume.yml
   - resources/jobs/backfill_history.yml
   - resources/jobs/ingest_live_market.yml
   - resources/jobs/transform_silver.yml
@@ -16,9 +29,34 @@ include:
   - resources/jobs/debug_app_data_plane.yml
   - resources/jobs/market_data_medallion_pipeline.yml
   - resources/jobs/market_data_medallion_pipeline_governed.yml
-  - resources/apps/market_observability_app.yml
 
 targets:
   dev:
     default: true
     mode: development
+    variables:
+      data_config_env: dev
+      governed_config_env: dev_governed
+      app_config_env: dev_app
+      app_serving_base_path: /Volumes/workspace/default/market_data_app/dev
+  staging:
+    mode: development
+    variables:
+      data_config_env: staging
+      governed_config_env: staging_governed
+      app_config_env: staging_app
+      app_serving_base_path: /Volumes/workspace/default/market_data_app/staging
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      user_name: ${workspace.current_user.userName}
+    permissions:
+      - level: CAN_MANAGE
+        user_name: ${workspace.current_user.userName}
+    variables:
+      data_config_env: prod
+      governed_config_env: prod_governed
+      app_config_env: prod_app
+      app_serving_base_path: /Volumes/workspace/default/market_data_app/prod

@@ -1,0 +1,45 @@
+environment: staging_governed
+mode: development
+
+catalog: workspace
+
+schemas:
+  bronze: default
+  silver: default
+  gold: default
+  audit: default
+
+tables:
+  bronze:
+    trades_live_raw: staging_bronze_trades_live_raw
+    klines_history_raw: staging_bronze_klines_history_raw
+    klines_live_raw: staging_bronze_klines_live_raw
+  silver:
+    trades: staging_silver_trades
+    klines_1m: staging_silver_klines_1m
+  gold:
+    latest_price: staging_gold_latest_price
+    volume_1m: staging_gold_volume_1m
+    volatility_5m: staging_gold_volatility_5m
+    top_movers: staging_gold_top_movers
+  audit:
+    quality_check_runs: staging_audit_quality_check_runs
+    processing_state: staging_audit_processing_state
+
+workspace:
+  target: staging
+
+paths:
+  history_input_path: tests/fixtures/sample_klines.json
+  live_input_path: tests/fixtures/sample_live_market.json
+  delta_base_path:
+
+databricks:
+  register_tables: true
+  table_format: delta
+  write_modes:
+    history: overwrite
+    live: append
+    silver: merge
+    gold: merge
+    audit: append

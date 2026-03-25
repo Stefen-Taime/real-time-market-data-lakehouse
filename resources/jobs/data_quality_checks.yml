@@ -22,7 +22,7 @@ resources:
           notebook_task:
             notebook_path: ../../notebooks/05_data_quality_checks.py
             base_parameters:
-              env: dev
+              env: ${var.data_config_env}
               fail_on_error: "true"
               audit_run_id: "{{job.run_id}}"
               job_name: "{{job.name}}"

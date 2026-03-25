@@ -137,7 +137,9 @@ def collect_binance_market_records(
     max_messages: int | None = None,
     duration_seconds: int | None = None,
     receive_timeout_seconds: float = 5.0,
-) -> tuple[list[dict[str, Any]], str]:
+    connect_retries: int = 3,
+    retry_backoff_seconds: float = 2.0,
+) -> tuple[list[dict[str, Any]], str, int]:
     """Collect live market records from Binance public WebSocket streams."""
     try:
         from websocket import create_connection
@@ -146,20 +148,32 @@ def collect_binance_market_records(
 
     stream_names = build_stream_names(symbols, stream_types, kline_interval=kline_interval)
     websocket_url = build_combined_stream_url(websocket_base_url, stream_names)
-    socket_connection = create_connection(websocket_url, timeout=receive_timeout_seconds)
+    max_attempts = max(connect_retries, 1)
+    last_error: Exception | None = None
 
-    try:
-        records = collect_messages_from_socket(
-            socket_connection,
-            source=source,
-            max_messages=max_messages,
-            duration_seconds=duration_seconds,
-            receive_timeout_seconds=receive_timeout_seconds,
-        )
-    finally:
-        socket_connection.close()
+    for attempt in range(1, max_attempts + 1):
+        socket_connection = None
+        try:
+            socket_connection = create_connection(websocket_url, timeout=receive_timeout_seconds)
+            records = collect_messages_from_socket(
+                socket_connection,
+                source=source,
+                max_messages=max_messages,
+                duration_seconds=duration_seconds,
+                receive_timeout_seconds=receive_timeout_seconds,
+            )
+            return records, websocket_url, attempt
+        except Exception as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                break
+            time.sleep(max(retry_backoff_seconds, 0.0) * attempt)
+        finally:
+            if socket_connection is not None:
+                socket_connection.close()
 
-    return records, websocket_url
+    assert last_error is not None
+    raise last_error
 
 
 def collect_binance_trade_records(
@@ -170,7 +184,7 @@ def collect_binance_trade_records(
     max_messages: int | None = None,
     duration_seconds: int | None = None,
     receive_timeout_seconds: float = 5.0,
-) -> tuple[list[dict[str, Any]], str]:
+) -> tuple[list[dict[str, Any]], str, int]:
     """Backward-compatible wrapper for trade-only stream collection."""
     return collect_binance_market_records(
         symbols=symbols,
@@ -195,6 +209,8 @@ def load_live_records(
     max_messages: int | None,
     duration_seconds: int | None,
     receive_timeout_seconds: float,
+    connect_retries: int = 3,
+    retry_backoff_seconds: float = 2.0,
     ingested_at: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load live market records from either a fixture file or Binance WebSocket."""
@@ -205,7 +221,7 @@ def load_live_records(
         return records, {"source_mode": source_mode, "input_path": str(input_path)}
 
     if source_mode == "binance_ws":
-        records, websocket_url = collect_binance_market_records(
+        records, websocket_url, attempts = collect_binance_market_records(
             symbols=symbols,
             stream_types=stream_types,
             kline_interval=kline_interval,
@@ -213,6 +229,8 @@ def load_live_records(
             max_messages=max_messages,
             duration_seconds=duration_seconds,
             receive_timeout_seconds=receive_timeout_seconds,
+            connect_retries=connect_retries,
+            retry_backoff_seconds=retry_backoff_seconds,
         )
         return records, {
             "source_mode": source_mode,
@@ -222,6 +240,9 @@ def load_live_records(
             "websocket_url": websocket_url,
             "max_messages": max_messages,
             "duration_seconds": duration_seconds,
+            "connect_retries": connect_retries,
+            "retry_backoff_seconds": retry_backoff_seconds,
+            "connection_attempts": attempts,
         }
 
     raise ValueError(f"Unsupported source_mode: {source_mode}")
@@ -318,6 +339,8 @@ def run_live_market_ingestion(
     silver_trades_table: str,
     silver_klines_table: str,
     base_output_path: str | None,
+    connect_retries: int = 3,
+    retry_backoff_seconds: float = 2.0,
     table_format: str = "delta",
     write_mode: str = "append",
     register_tables: bool = False,
@@ -335,6 +358,8 @@ def run_live_market_ingestion(
         max_messages=max_messages,
         duration_seconds=duration_seconds,
         receive_timeout_seconds=receive_timeout_seconds,
+        connect_retries=connect_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
         ingested_at=ingested_at,
     )
     event_counts = summarize_event_counts(all_records)
@@ -446,6 +471,8 @@ def run_live_trade_ingestion(
     bronze_table: str,
     silver_table: str,
     base_output_path: str | None,
+    connect_retries: int = 3,
+    retry_backoff_seconds: float = 2.0,
     table_format: str = "delta",
     write_mode: str = "append",
     register_tables: bool = False,
@@ -464,6 +491,8 @@ def run_live_trade_ingestion(
         max_messages=max_messages,
         duration_seconds=duration_seconds,
         receive_timeout_seconds=receive_timeout_seconds,
+        connect_retries=connect_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
         catalog=catalog,
         bronze_schema=bronze_schema,
         silver_schema=silver_schema,
@@ -492,6 +521,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-messages", type=int, default=20)
     parser.add_argument("--duration-seconds", type=int, default=None)
     parser.add_argument("--receive-timeout-seconds", type=float, default=5.0)
+    parser.add_argument("--connect-retries", type=int, default=3)
+    parser.add_argument("--retry-backoff-seconds", type=float, default=2.0)
     args = parser.parse_args(argv)
 
     symbols = [symbol.strip().upper() for symbol in args.symbols.split(",") if symbol.strip()]
@@ -506,6 +537,8 @@ def main(argv: list[str] | None = None) -> None:
         max_messages=args.max_messages,
         duration_seconds=args.duration_seconds,
         receive_timeout_seconds=args.receive_timeout_seconds,
+        connect_retries=args.connect_retries,
+        retry_backoff_seconds=args.retry_backoff_seconds,
     )
     counts = summarize_event_counts(records)
 

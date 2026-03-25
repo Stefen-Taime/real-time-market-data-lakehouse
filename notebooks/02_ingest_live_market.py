@@ -82,6 +82,8 @@ default_duration_seconds = str(config.get("market_source", {}).get("live", {}).g
 default_receive_timeout_seconds = str(
     config.get("market_source", {}).get("live", {}).get("receive_timeout_seconds", 5)
 )
+default_connect_retries = str(config.get("market_source", {}).get("live", {}).get("connect_retries", 3))
+default_retry_backoff_seconds = str(config.get("market_source", {}).get("live", {}).get("retry_backoff_seconds", 2))
 default_symbols = ",".join(config.get("symbols", []))
 
 catalog = config["catalog"]
@@ -102,6 +104,8 @@ if dbutils_handle is not None:
     dbutils_handle.widgets.text("max_messages", default_max_messages)
     dbutils_handle.widgets.text("duration_seconds", default_duration_seconds)
     dbutils_handle.widgets.text("receive_timeout_seconds", default_receive_timeout_seconds)
+    dbutils_handle.widgets.text("connect_retries", default_connect_retries)
+    dbutils_handle.widgets.text("retry_backoff_seconds", default_retry_backoff_seconds)
     dbutils_handle.widgets.text("delta_base_path", default_delta_base_path or "")
     dbutils_handle.widgets.text("register_tables", default_register_tables)
     dbutils_handle.widgets.text("table_format", default_table_format)
@@ -117,6 +121,8 @@ if dbutils_handle is not None:
     max_messages = _to_optional_int(dbutils_handle.widgets.get("max_messages"))
     duration_seconds = _to_optional_int(dbutils_handle.widgets.get("duration_seconds"))
     receive_timeout_seconds = _to_float(dbutils_handle.widgets.get("receive_timeout_seconds"))
+    connect_retries = _to_optional_int(dbutils_handle.widgets.get("connect_retries")) or 1
+    retry_backoff_seconds = _to_float(dbutils_handle.widgets.get("retry_backoff_seconds"))
     delta_base_path = dbutils_handle.widgets.get("delta_base_path") or None
     register_tables = _to_bool(dbutils_handle.widgets.get("register_tables"))
     table_format = dbutils_handle.widgets.get("table_format")
@@ -132,6 +138,8 @@ else:
     max_messages = _to_optional_int(default_max_messages)
     duration_seconds = _to_optional_int(default_duration_seconds)
     receive_timeout_seconds = _to_float(default_receive_timeout_seconds)
+    connect_retries = _to_optional_int(default_connect_retries) or 1
+    retry_backoff_seconds = _to_float(default_retry_backoff_seconds)
     delta_base_path = default_delta_base_path
     register_tables = _to_bool(default_register_tables)
     table_format = default_table_format
@@ -150,6 +158,8 @@ summary = run_live_market_ingestion(
     max_messages=max_messages,
     duration_seconds=duration_seconds,
     receive_timeout_seconds=receive_timeout_seconds,
+    connect_retries=connect_retries,
+    retry_backoff_seconds=retry_backoff_seconds,
     catalog=catalog,
     bronze_schema=bronze_schema,
     silver_schema=silver_schema,

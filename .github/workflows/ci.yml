@@ -39,6 +39,13 @@ jobs:
   bundle-validate:
     runs-on: ubuntu-latest
     needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - dev
+          - staging
+          - prod
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,8 +70,8 @@ jobs:
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: ./scripts/validate_bundle.sh dev
+        run: ./scripts/validate_bundle.sh ${{ matrix.target }}
 
       - name: Skip bundle validation
         if: steps.databricks-auth.outputs.configured != 'true'
-        run: echo "Skipping Databricks bundle validation because DATABRICKS_HOST or DATABRICKS_TOKEN is not configured."
+        run: echo "Skipping Databricks bundle validation for ${{ matrix.target }} because DATABRICKS_HOST or DATABRICKS_TOKEN is not configured."

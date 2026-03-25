@@ -40,6 +40,8 @@ market_source:
     max_messages: 200
     duration_seconds: 60
     receive_timeout_seconds: 5
+    connect_retries: 3
+    retry_backoff_seconds: 2
 
 processing:
   volatility_window_size: 5
@@ -47,6 +49,16 @@ processing:
   incremental:
     overlap_seconds: 120
     watermark_column: ingested_at
+
+governance:
+  orchestration_mode: lakeflow_jobs
+  table_registration_mode: best_effort_on_free_edition
+  canonical_pipeline_job: market_data_medallion_pipeline
+
+slo:
+  bronze_live_freshness_seconds: 300
+  silver_update_lag_seconds: 600
+  gold_update_lag_seconds: 900
 
 quality:
   fail_on_error: true
