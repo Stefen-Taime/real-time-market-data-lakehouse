@@ -51,4 +51,4 @@ def test_load_project_config_applies_prod_app_overrides() -> None:
 
     assert config["environment"] == "prod_app"
     assert config["paths"]["source_delta_base_path"] == "dbfs:/tmp/real-time-market-data-lakehouse/prod"
-    assert config["app"]["serving_base_path"] == "/Volumes/workspace/default/market_data_app/prod"
+    assert config["app"]["serving_base_path"] == "/Volumes/workspace/default/market_data_app_prod/prod"
