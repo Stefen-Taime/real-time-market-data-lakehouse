@@ -114,12 +114,34 @@ def execute_sql_statement_with_context(
     timeout_seconds: float = 60.0,
 ) -> dict[str, Any]:
     """Execute a SQL statement against a warehouse using the notebook context token."""
-    if not warehouse_id:
-        raise ValueError("warehouse_id is required.")
-
     context = dbutils_handle.notebook.entry_point.getDbutils().notebook().getContext()
     host = context.apiUrl().get()
     token = context.apiToken().get()
+
+    return execute_sql_statement(
+        host=host,
+        token=token,
+        warehouse_id=warehouse_id,
+        statement=statement,
+        wait_timeout=wait_timeout,
+        poll_interval_seconds=poll_interval_seconds,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def execute_sql_statement(
+    *,
+    host: str,
+    token: str,
+    warehouse_id: str,
+    statement: str,
+    wait_timeout: str = "20s",
+    poll_interval_seconds: float = 2.0,
+    timeout_seconds: float = 60.0,
+) -> dict[str, Any]:
+    """Execute a SQL statement against a warehouse using an explicit host/token pair."""
+    if not warehouse_id:
+        raise ValueError("warehouse_id is required.")
 
     payload = json.dumps(
         {
@@ -170,3 +192,27 @@ def execute_sql_statement_with_context(
         )
 
     return result
+
+
+def fetch_query_rows_with_context(
+    dbutils_handle: Any,
+    *,
+    warehouse_id: str,
+    statement: str,
+    wait_timeout: str = "20s",
+    poll_interval_seconds: float = 2.0,
+    timeout_seconds: float = 60.0,
+) -> tuple[list[str], list[list[Any]]]:
+    """Execute a warehouse query and return column names plus result rows."""
+    result = execute_sql_statement_with_context(
+        dbutils_handle,
+        warehouse_id=warehouse_id,
+        statement=statement,
+        wait_timeout=wait_timeout,
+        poll_interval_seconds=poll_interval_seconds,
+        timeout_seconds=timeout_seconds,
+    )
+    manifest = result.get("manifest", {})
+    columns = [column["name"] for column in manifest.get("schema", {}).get("columns", [])]
+    rows = result.get("result", {}).get("data_array", []) or []
+    return columns, rows

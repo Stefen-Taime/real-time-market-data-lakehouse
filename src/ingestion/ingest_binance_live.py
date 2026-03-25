@@ -8,9 +8,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib import parse, request
 
 from src.ingestion.load_binance_history import create_bronze_history_dataframe, create_silver_history_dataframe
-from src.ingestion.parse_raw_payloads import parse_market_payload
+from src.ingestion.parse_raw_payloads import parse_market_payload, serialize_payload, timestamp_ms_to_iso8601, utc_now_iso
 from src.transforms.bronze_to_silver_klines import transform_kline_batch
 from src.transforms.bronze_to_silver_trades import transform_trade_batch
 from src.utils.lakehouse_io import build_storage_path, build_table_name, ensure_schema_exists, write_dataframe
@@ -69,6 +70,51 @@ def load_live_file(path: str | Path, ingested_at: str | None = None) -> list[dic
 
     events = payload if isinstance(payload, list) else [payload]
     return [parse_market_payload(event, ingested_at=ingested_at) for event in events]
+
+
+def fetch_recent_trade_records(
+    *,
+    symbols: list[str],
+    limit: int = 200,
+    base_url: str = "https://api.binance.com",
+    timeout_seconds: float = 15.0,
+    ingested_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch recent trades from Binance REST and normalize them into Bronze-ready records."""
+    record_ingested_at = ingested_at or utc_now_iso()
+    records: list[dict[str, Any]] = []
+
+    for symbol in symbols:
+        query_string = parse.urlencode({"symbol": symbol.upper(), "limit": int(limit)})
+        endpoint = f"{base_url.rstrip('/')}/api/v3/trades?{query_string}"
+        http_request = request.Request(
+            endpoint,
+            headers={"User-Agent": "real-time-market-data-lakehouse/1.0"},
+            method="GET",
+        )
+        with request.urlopen(http_request, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        for trade in payload:
+            records.append(
+                {
+                    "source": "binance_rest",
+                    "event_type": "trade",
+                    "symbol": symbol.upper(),
+                    "trade_id": int(trade["id"]),
+                    "price": str(trade["price"]),
+                    "quantity": str(trade["qty"]),
+                    "trade_time": timestamp_ms_to_iso8601(trade["time"]),
+                    "event_time": timestamp_ms_to_iso8601(trade["time"]),
+                    "buyer_order_id": None,
+                    "seller_order_id": None,
+                    "is_market_maker": bool(trade.get("isBuyerMaker", False)),
+                    "ingested_at": record_ingested_at,
+                    "raw_payload": serialize_payload(trade),
+                }
+            )
+
+    return records
 
 
 def filter_live_records(records: list[dict[str, Any]], event_type: str) -> list[dict[str, Any]]:

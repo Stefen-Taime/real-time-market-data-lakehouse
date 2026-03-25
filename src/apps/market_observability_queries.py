@@ -190,6 +190,7 @@ WITH latest_run AS (
   LIMIT 1
 )
 SELECT checked_at, dataset_name, layer, table_name, passed, row_count, violation_count, job_name, task_name
+     , audit_run_id
 FROM {relation}
 WHERE audit_run_id IN (SELECT audit_run_id FROM latest_run)
 ORDER BY passed ASC, dataset_name ASC

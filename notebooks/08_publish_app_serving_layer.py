@@ -32,6 +32,17 @@ def _get_dbutils():
         return None
 
 
+def _resolve_optional_input_path(value: str | None, project_root: Path) -> str | None:
+    if not value:
+        return None
+    if value.startswith(("dbfs:/", "/Volumes/", "/Workspace/")):
+        return value
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return str(candidate)
+    return str((project_root / candidate).resolve())
+
+
 dbutils_handle = _get_dbutils()
 
 default_env = "dev_app"
@@ -76,6 +87,18 @@ else:
     recent_volume_hours = int(default_recent_volume_hours)
     insert_batch_size = int(default_insert_batch_size)
 
+direct_publish_config = config.get("direct_publish")
+if direct_publish_config:
+    direct_publish_config = direct_publish_config.copy()
+    direct_publish_config["history_input_path"] = _resolve_optional_input_path(
+        direct_publish_config.get("history_input_path"),
+        project_root,
+    )
+    direct_publish_config["live_input_path"] = _resolve_optional_input_path(
+        direct_publish_config.get("live_input_path"),
+        project_root,
+    )
+
 spark_session = globals().get("spark") or get_spark_session(app_name="market-data-publish-app-serving")
 summary = run_publish_app_serving_layer(
     spark_session,
@@ -93,6 +116,12 @@ summary = run_publish_app_serving_layer(
     write_mode=write_mode,
     recent_volume_hours=recent_volume_hours,
     insert_batch_size=insert_batch_size,
+    source_catalog=config.get("catalog"),
+    source_schemas=config.get("schemas"),
+    source_tables=config.get("tables"),
+    source_register_tables=config.get("databricks", {}).get("register_tables", False),
+    direct_publish_config=direct_publish_config,
+    environment=env,
 )
 summary["environment"] = env
 summary["runtime_context"] = build_runtime_context(spark_session, requested_catalog=config["catalog"])

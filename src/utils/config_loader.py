@@ -3,6 +3,11 @@
 from pathlib import Path
 from typing import Any
 
+from src.utils.runtime_dependencies import ensure_python_modules
+
+
+ensure_python_modules({"yaml": "pyyaml"})
+
 import yaml
 
 

@@ -15,6 +15,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
+from typing import Any
 
 
 def _resolve_project_root() -> Path:
@@ -32,7 +33,17 @@ if str(project_root) not in sys.path:
 
 from pyspark.sql import Window, functions as F
 
+from src.apps.market_observability_queries import (
+    build_freshness_query,
+    build_latest_prices_query,
+    build_latest_volatility_query,
+    build_processing_state_query,
+    build_quality_latest_status_query,
+    build_recent_volume_query,
+    build_top_movers_query,
+)
 from src.utils.config_loader import load_project_config
+from src.utils.databricks_warehouse_sql import fetch_query_rows_with_context
 from src.utils.lakehouse_io import (
     build_storage_path,
     build_table_name,
@@ -42,6 +53,66 @@ from src.utils.lakehouse_io import (
 from src.utils.notebook_runtime import build_runtime_context, emit_notebook_output
 from src.utils.processing_state import normalize_timestamp
 from src.utils.spark_session import get_spark_session
+
+
+WAREHOUSE_DEFAULT_COLUMNS = {
+    "gold_latest_price": ["symbol", "latest_price", "trade_time", "source"],
+    "gold_volume_1m": ["symbol", "window_start", "volume_1m", "notional_1m", "trade_count"],
+    "gold_volatility_5m": ["symbol", "window_start", "window_end", "volatility_5m", "observation_count"],
+    "gold_top_movers": ["symbol", "window_start", "window_end", "start_price", "end_price", "move_pct"],
+    "audit_quality_check_runs": [
+        "checked_at",
+        "dataset_name",
+        "layer",
+        "table_name",
+        "passed",
+        "row_count",
+        "violation_count",
+        "job_name",
+        "task_name",
+        "audit_run_id",
+    ],
+    "audit_processing_state": [
+        "pipeline_name",
+        "dataset_name",
+        "source_layer",
+        "target_layer",
+        "watermark_column",
+        "last_processed_at",
+        "updated_at",
+        "metadata_json",
+    ],
+    "freshness": ["dataset_name", "row_count", "latest_timestamp"],
+}
+
+WAREHOUSE_CASTS = {
+    "gold_latest_price": {"latest_price": "double", "trade_time": "timestamp"},
+    "gold_volume_1m": {"window_start": "timestamp", "volume_1m": "double", "notional_1m": "double", "trade_count": "int"},
+    "gold_volatility_5m": {
+        "window_start": "timestamp",
+        "window_end": "timestamp",
+        "volatility_5m": "double",
+        "observation_count": "int",
+    },
+    "gold_top_movers": {
+        "window_start": "timestamp",
+        "window_end": "timestamp",
+        "start_price": "double",
+        "end_price": "double",
+        "move_pct": "double",
+    },
+    "audit_quality_check_runs": {
+        "checked_at": "timestamp",
+        "passed": "boolean",
+        "row_count": "int",
+        "violation_count": "int",
+    },
+    "audit_processing_state": {
+        "last_processed_at": "timestamp",
+        "updated_at": "timestamp",
+    },
+    "freshness": {"row_count": "int", "latest_timestamp": "timestamp"},
+}
 
 
 def _get_dbutils():
@@ -82,6 +153,44 @@ def _display_dataframe(dataframe, *, limit: int | None = None) -> None:
         display_handle(target_dataframe)
     else:
         target_dataframe.show(truncate=False)
+
+
+def _resolve_notebook_path(dbutils_handle) -> str | None:
+    if dbutils_handle is None:
+        return None
+
+    try:  # pragma: no cover - depends on Databricks runtime objects
+        context = dbutils_handle.notebook.entry_point.getDbutils().notebook().getContext()
+        notebook_path = context.notebookPath()
+        getter = getattr(notebook_path, "get", None)
+        if callable(getter):
+            value = getter()
+            return value or None
+    except Exception:
+        return None
+
+    return None
+
+
+def _infer_bundle_target_from_notebook_path(notebook_path: str | None) -> str | None:
+    if not notebook_path:
+        return None
+
+    marker = "/.bundle/real-time-market-data-lakehouse/"
+    if marker not in notebook_path:
+        return None
+
+    suffix = notebook_path.split(marker, 1)[1]
+    target = suffix.split("/", 1)[0].strip()
+    return target or None
+
+
+def _infer_default_env(dbutils_handle) -> str:
+    notebook_path = _resolve_notebook_path(dbutils_handle)
+    bundle_target = _infer_bundle_target_from_notebook_path(notebook_path)
+    if bundle_target == "azure_trial":
+        return "azure_trial_governed"
+    return "prod"
 
 
 def _render_metric_cards(metrics: dict[str, str | int | float | None]) -> None:
@@ -179,6 +288,75 @@ def _load_optional_dataset(
         ),
         reference,
     )
+
+
+def _build_serving_query_kwargs(config: dict) -> dict[str, Any] | None:
+    app_config = config.get("app", {})
+    serving_tables_config = config.get("serving_tables", {})
+    serving_table_names = serving_tables_config.get("names", {})
+    warehouse_id = app_config.get("warehouse_id")
+    query_mode = str(app_config.get("query_mode", "")).strip().lower()
+
+    if not warehouse_id or query_mode != "table" or not serving_table_names:
+        return None
+
+    return {
+        "warehouse_id": warehouse_id,
+        "catalog": serving_tables_config.get("catalog", app_config.get("serving_catalog", config.get("catalog"))),
+        "schema": serving_tables_config.get("schema", app_config.get("serving_schema", config["schemas"]["gold"])),
+        "serving_tables": serving_table_names,
+    }
+
+
+def _warehouse_rows_to_dataframe(spark_session, *, dataset_name: str, columns: list[str], rows: list[list[object]]):
+    from pyspark.sql.types import StringType, StructField, StructType
+
+    effective_columns = columns or WAREHOUSE_DEFAULT_COLUMNS[dataset_name]
+    if rows:
+        dataframe = spark_session.createDataFrame(rows, effective_columns)
+    else:
+        schema = StructType([StructField(column, StringType(), True) for column in effective_columns])
+        dataframe = spark_session.createDataFrame([], schema=schema)
+
+    for column_name, data_type in WAREHOUSE_CASTS.get(dataset_name, {}).items():
+        if column_name in dataframe.columns:
+            dataframe = dataframe.withColumn(column_name, F.col(column_name).cast(data_type))
+
+    return dataframe
+
+
+def _load_dataset_from_warehouse(
+    spark_session,
+    *,
+    dataset_name: str,
+    statement: str,
+    warehouse_id: str,
+    dbutils_handle,
+    serving_catalog: str,
+    serving_schema: str,
+    serving_table_name: str | None,
+):
+    columns, rows = fetch_query_rows_with_context(
+        dbutils_handle,
+        warehouse_id=warehouse_id,
+        statement=statement,
+    )
+    dataframe = _warehouse_rows_to_dataframe(
+        spark_session,
+        dataset_name=dataset_name,
+        columns=columns,
+        rows=rows,
+    )
+    reference = {
+        "layer": "warehouse",
+        "schema": serving_schema,
+        "table": serving_table_name or dataset_name,
+        "table_name": ".".join(part for part in (serving_catalog, serving_schema, serving_table_name) if part),
+        "input_path": None,
+        "exists": True,
+        "query_mode": "warehouse_table",
+    }
+    return dataframe, reference
 
 
 def _build_latest_quality_status_dataframe(quality_dataframe):
@@ -345,7 +523,7 @@ def _build_dashboard_metrics(
 
 dbutils_handle = _get_dbutils()
 
-default_env = "dev"
+default_env = _infer_default_env(dbutils_handle)
 if dbutils_handle is not None:
     dbutils_handle.widgets.text("env", default_env)
     env = dbutils_handle.widgets.get("env")
@@ -362,6 +540,7 @@ if dbutils_handle is not None:
     dbutils_handle.widgets.text("delta_base_path", default_delta_base_path or "")
     dbutils_handle.widgets.text("register_tables", default_register_tables)
     dbutils_handle.widgets.text("table_format", default_table_format)
+    dbutils_handle.widgets.dropdown("include_runtime_context", "false", ["false", "true"])
     dbutils_handle.widgets.text("limit", "20")
     dbutils_handle.widgets.text("lookback_hours", "6")
     dbutils_handle.widgets.text("top_n", "10")
@@ -370,6 +549,7 @@ if dbutils_handle is not None:
     delta_base_path = dbutils_handle.widgets.get("delta_base_path") or None
     register_tables = _to_bool(dbutils_handle.widgets.get("register_tables"))
     table_format = dbutils_handle.widgets.get("table_format")
+    include_runtime_context = _to_bool(dbutils_handle.widgets.get("include_runtime_context"))
     limit = _to_int(dbutils_handle.widgets.get("limit"))
     lookback_hours = _to_int(dbutils_handle.widgets.get("lookback_hours"))
     top_n = _to_int(dbutils_handle.widgets.get("top_n"))
@@ -378,6 +558,7 @@ else:
     delta_base_path = default_delta_base_path
     register_tables = _to_bool(default_register_tables)
     table_format = default_table_format
+    include_runtime_context = False
     limit = 20
     lookback_hours = 6
     top_n = 10
@@ -386,86 +567,220 @@ else:
 catalog = config["catalog"]
 schemas = config["schemas"]
 tables = config["tables"]
+serving_query_kwargs = _build_serving_query_kwargs(config)
 
 spark_session = globals().get("spark") or get_spark_session(app_name="market-data-observability-dashboard")
 
-latest_price_dataframe, latest_price_reference = _load_optional_dataset(
-    spark_session,
-    catalog=catalog,
-    schema=schemas["gold"],
-    table=tables["gold"]["latest_price"],
-    layer="gold",
-    delta_base_path=delta_base_path,
-    table_format=table_format,
-    register_tables=register_tables,
-)
-volume_dataframe, volume_reference = _load_optional_dataset(
-    spark_session,
-    catalog=catalog,
-    schema=schemas["gold"],
-    table=tables["gold"]["volume_1m"],
-    layer="gold",
-    delta_base_path=delta_base_path,
-    table_format=table_format,
-    register_tables=register_tables,
-)
-volatility_dataframe, volatility_reference = _load_optional_dataset(
-    spark_session,
-    catalog=catalog,
-    schema=schemas["gold"],
-    table=tables["gold"]["volatility_5m"],
-    layer="gold",
-    delta_base_path=delta_base_path,
-    table_format=table_format,
-    register_tables=register_tables,
-)
-top_movers_dataframe, top_movers_reference = _load_optional_dataset(
-    spark_session,
-    catalog=catalog,
-    schema=schemas["gold"],
-    table=tables["gold"]["top_movers"],
-    layer="gold",
-    delta_base_path=delta_base_path,
-    table_format=table_format,
-    register_tables=register_tables,
-)
-quality_dataframe, quality_reference = _load_optional_dataset(
-    spark_session,
-    catalog=catalog,
-    schema=schemas["audit"],
-    table=tables["audit"]["quality_check_runs"],
-    layer="audit",
-    delta_base_path=delta_base_path,
-    table_format=table_format,
-    register_tables=register_tables,
-)
-processing_state_dataframe, processing_state_reference = _load_optional_dataset(
-    spark_session,
-    catalog=catalog,
-    schema=schemas["audit"],
-    table=tables["audit"]["processing_state"],
-    layer="audit",
-    delta_base_path=delta_base_path,
-    table_format=table_format,
-    register_tables=register_tables,
-)
+if serving_query_kwargs and dbutils_handle is not None:
+    latest_price_dataframe, latest_price_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="gold_latest_price",
+        statement=build_latest_prices_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_table=serving_query_kwargs["serving_tables"]["gold_latest_price"],
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=serving_query_kwargs["serving_tables"]["gold_latest_price"],
+    )
+    volume_dataframe, volume_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="gold_volume_1m",
+        statement=build_recent_volume_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_table=serving_query_kwargs["serving_tables"]["gold_volume_1m"],
+            lookback_hours=lookback_hours,
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=serving_query_kwargs["serving_tables"]["gold_volume_1m"],
+    )
+    volatility_dataframe, volatility_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="gold_volatility_5m",
+        statement=build_latest_volatility_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_table=serving_query_kwargs["serving_tables"]["gold_volatility_5m"],
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=serving_query_kwargs["serving_tables"]["gold_volatility_5m"],
+    )
+    top_movers_dataframe, top_movers_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="gold_top_movers",
+        statement=build_top_movers_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_table=serving_query_kwargs["serving_tables"]["gold_top_movers"],
+            limit=top_n,
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=serving_query_kwargs["serving_tables"]["gold_top_movers"],
+    )
+    quality_dataframe, quality_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="audit_quality_check_runs",
+        statement=build_quality_latest_status_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_table=serving_query_kwargs["serving_tables"]["audit_quality_check_runs"],
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=serving_query_kwargs["serving_tables"]["audit_quality_check_runs"],
+    )
+    processing_state_dataframe, processing_state_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="audit_processing_state",
+        statement=build_processing_state_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_table=serving_query_kwargs["serving_tables"]["audit_processing_state"],
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=serving_query_kwargs["serving_tables"]["audit_processing_state"],
+    )
+    freshness_overview_dataframe, _freshness_reference = _load_dataset_from_warehouse(
+        spark_session,
+        dataset_name="freshness",
+        statement=build_freshness_query(
+            catalog=serving_query_kwargs["catalog"],
+            schema=serving_query_kwargs["schema"],
+            serving_tables=serving_query_kwargs["serving_tables"],
+        ),
+        warehouse_id=serving_query_kwargs["warehouse_id"],
+        dbutils_handle=dbutils_handle,
+        serving_catalog=serving_query_kwargs["catalog"],
+        serving_schema=serving_query_kwargs["schema"],
+        serving_table_name=None,
+    )
+    freshness_overview_dataframe = (
+        freshness_overview_dataframe.withColumn("distinct_symbol_count", F.lit(None).cast("int"))
+        .withColumn("timestamp_column", F.lit(None).cast("string"))
+        .withColumn(
+            "age_minutes",
+            F.round(
+                (F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp(F.col("latest_timestamp"))) / F.lit(60.0),
+                2,
+            ),
+        )
+        if freshness_overview_dataframe is not None
+        else None
+    )
+    latest_quality_status_dataframe = quality_dataframe
+    latest_quality_run_id = (
+        quality_dataframe.select("audit_run_id").first()["audit_run_id"]
+        if quality_dataframe is not None and quality_dataframe.count() > 0
+        else None
+    )
+    quality_run_summary_dataframe = (
+        quality_dataframe.groupBy("audit_run_id", "checked_at", "job_name", "task_name")
+        .agg(
+            F.count(F.lit(1)).cast("int").alias("dataset_count"),
+            F.sum(F.when(F.col("passed"), F.lit(0)).otherwise(F.lit(1))).cast("int").alias("failed_dataset_count"),
+            F.sum(F.col("violation_count")).cast("int").alias("violation_count"),
+        )
+        .orderBy(F.col("checked_at").desc(), F.col("audit_run_id").desc())
+        if quality_dataframe is not None
+        else None
+    )
+    processing_state_status_dataframe = _build_processing_state_status_dataframe(processing_state_dataframe)
+else:
+    latest_price_dataframe, latest_price_reference = _load_optional_dataset(
+        spark_session,
+        catalog=catalog,
+        schema=schemas["gold"],
+        table=tables["gold"]["latest_price"],
+        layer="gold",
+        delta_base_path=delta_base_path,
+        table_format=table_format,
+        register_tables=register_tables,
+    )
+    volume_dataframe, volume_reference = _load_optional_dataset(
+        spark_session,
+        catalog=catalog,
+        schema=schemas["gold"],
+        table=tables["gold"]["volume_1m"],
+        layer="gold",
+        delta_base_path=delta_base_path,
+        table_format=table_format,
+        register_tables=register_tables,
+    )
+    volatility_dataframe, volatility_reference = _load_optional_dataset(
+        spark_session,
+        catalog=catalog,
+        schema=schemas["gold"],
+        table=tables["gold"]["volatility_5m"],
+        layer="gold",
+        delta_base_path=delta_base_path,
+        table_format=table_format,
+        register_tables=register_tables,
+    )
+    top_movers_dataframe, top_movers_reference = _load_optional_dataset(
+        spark_session,
+        catalog=catalog,
+        schema=schemas["gold"],
+        table=tables["gold"]["top_movers"],
+        layer="gold",
+        delta_base_path=delta_base_path,
+        table_format=table_format,
+        register_tables=register_tables,
+    )
+    quality_dataframe, quality_reference = _load_optional_dataset(
+        spark_session,
+        catalog=catalog,
+        schema=schemas["audit"],
+        table=tables["audit"]["quality_check_runs"],
+        layer="audit",
+        delta_base_path=delta_base_path,
+        table_format=table_format,
+        register_tables=register_tables,
+    )
+    processing_state_dataframe, processing_state_reference = _load_optional_dataset(
+        spark_session,
+        catalog=catalog,
+        schema=schemas["audit"],
+        table=tables["audit"]["processing_state"],
+        layer="audit",
+        delta_base_path=delta_base_path,
+        table_format=table_format,
+        register_tables=register_tables,
+    )
 
-quality_run_summary_dataframe, latest_quality_status_dataframe, latest_quality_run_id = _build_latest_quality_status_dataframe(
-    quality_dataframe
-)
-processing_state_status_dataframe = _build_processing_state_status_dataframe(processing_state_dataframe)
+    quality_run_summary_dataframe, latest_quality_status_dataframe, latest_quality_run_id = _build_latest_quality_status_dataframe(
+        quality_dataframe
+    )
+    processing_state_status_dataframe = _build_processing_state_status_dataframe(processing_state_dataframe)
 
-freshness_rows = _build_freshness_overview_rows(
-    [
-        {"dataset_name": "gold_latest_price", "layer": "gold", "dataframe": latest_price_dataframe, "timestamp_column": "trade_time"},
-        {"dataset_name": "gold_volume_1m", "layer": "gold", "dataframe": volume_dataframe, "timestamp_column": "window_start"},
-        {"dataset_name": "gold_volatility_5m", "layer": "gold", "dataframe": volatility_dataframe, "timestamp_column": "window_end"},
-        {"dataset_name": "gold_top_movers", "layer": "gold", "dataframe": top_movers_dataframe, "timestamp_column": "window_end"},
-        {"dataset_name": "audit_quality_check_runs", "layer": "audit", "dataframe": quality_dataframe, "timestamp_column": "checked_at"},
-        {"dataset_name": "audit_processing_state", "layer": "audit", "dataframe": processing_state_dataframe, "timestamp_column": "updated_at"},
-    ]
-)
-freshness_overview_dataframe = spark_session.createDataFrame(freshness_rows) if freshness_rows else None
+    freshness_rows = _build_freshness_overview_rows(
+        [
+            {"dataset_name": "gold_latest_price", "layer": "gold", "dataframe": latest_price_dataframe, "timestamp_column": "trade_time"},
+            {"dataset_name": "gold_volume_1m", "layer": "gold", "dataframe": volume_dataframe, "timestamp_column": "window_start"},
+            {"dataset_name": "gold_volatility_5m", "layer": "gold", "dataframe": volatility_dataframe, "timestamp_column": "window_end"},
+            {"dataset_name": "gold_top_movers", "layer": "gold", "dataframe": top_movers_dataframe, "timestamp_column": "window_end"},
+            {"dataset_name": "audit_quality_check_runs", "layer": "audit", "dataframe": quality_dataframe, "timestamp_column": "checked_at"},
+            {"dataset_name": "audit_processing_state", "layer": "audit", "dataframe": processing_state_dataframe, "timestamp_column": "updated_at"},
+        ]
+    )
+    freshness_overview_dataframe = spark_session.createDataFrame(freshness_rows) if freshness_rows else None
 
 latest_prices_display_dataframe = (
     _filter_symbols(latest_price_dataframe, selected_symbols).orderBy(F.col("trade_time").desc(), F.col("symbol"))
@@ -515,8 +830,10 @@ summary = {
     "latest_quality_run_id": latest_quality_run_id,
     "datasets": dataset_references,
     "metrics": dashboard_metrics,
-    "runtime_context": build_runtime_context(spark_session, requested_catalog=catalog),
 }
+
+if include_runtime_context:
+    summary["runtime_context"] = build_runtime_context(spark_session, requested_catalog=catalog)
 
 # COMMAND ----------
 

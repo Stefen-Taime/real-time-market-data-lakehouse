@@ -1,0 +1,98 @@
+environment: azure_trial_app
+mode: development
+
+catalog: dbx_trial_marketdata
+
+schemas:
+  bronze: default
+  silver: default
+  gold: default
+  audit: default
+
+tables:
+  bronze:
+    trades_live_raw: azure_trial_bronze_trades_live_raw
+    klines_history_raw: azure_trial_bronze_klines_history_raw
+    klines_live_raw: azure_trial_bronze_klines_live_raw
+  silver:
+    trades: azure_trial_silver_trades
+    klines_1m: azure_trial_silver_klines_1m
+  gold:
+    latest_price: azure_trial_gold_latest_price
+    volume_1m: azure_trial_gold_volume_1m
+    volatility_5m: azure_trial_gold_volatility_5m
+    top_movers: azure_trial_gold_top_movers
+  audit:
+    quality_check_runs: azure_trial_audit_quality_check_runs
+    processing_state: azure_trial_audit_processing_state
+
+workspace:
+  target: azure_trial
+
+volume:
+  catalog: dbx_trial_marketdata
+  schema: default
+  name: market_data_app_azure_trial
+
+serving_tables:
+  catalog: dbx_trial_marketdata
+  schema: default
+  names:
+    gold_latest_price: azure_trial_app_gold_latest_price
+    gold_volume_1m: azure_trial_app_gold_volume_1m
+    gold_volatility_5m: azure_trial_app_gold_volatility_5m
+    gold_top_movers: azure_trial_app_gold_top_movers
+    audit_quality_check_runs: azure_trial_app_audit_quality_check_runs
+    audit_processing_state: azure_trial_app_audit_processing_state
+
+paths:
+  source_delta_base_path: /Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial/lakehouse
+  delta_base_path: dbfs:/Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial
+
+databricks:
+  register_tables: false
+  table_format: delta
+  write_modes:
+    serving: overwrite
+
+direct_publish:
+  enabled: true
+  history_source_mode: binance_rest
+  history_rest_base_url: https://api.binance.com
+  history_limit: 30
+  history_timeout_seconds: 15
+  live_source_mode: binance_ws
+  trade_rest_base_url: https://api.binance.com
+  trade_rest_limit: 200
+  trade_timeout_seconds: 15
+  live_input_path: tests/fixtures/sample_live_market.json
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - BNBUSDT
+  stream_types:
+    - trade
+    - kline
+  kline_interval: 1m
+  websocket_base_url: wss://data-stream.binance.vision
+  max_messages: 200
+  duration_seconds: 60
+  receive_timeout_seconds: 5
+  connect_retries: 3
+  retry_backoff_seconds: 2
+  volatility_window_size: 5
+  top_movers_limit: 10
+
+app:
+  warehouse_id: 14c0f2ddc3545df2
+  query_mode: table
+  volume_path: /Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial
+  serving_base_path: /Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial
+  serving_catalog: dbx_trial_marketdata
+  serving_schema: default
+  serving_volume_history_hours: 24
+  sql_insert_batch_size: 200
+  default_limit: 25
+  default_volume_hours: 6
+  default_top_movers_limit: 10

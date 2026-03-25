@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib import parse, request
 
 from src.ingestion.parse_raw_payloads import serialize_payload, timestamp_ms_to_iso8601, utc_now_iso
 from src.transforms.bronze_to_silver_klines import transform_kline_batch
@@ -76,6 +77,69 @@ def load_history_file(path: str | Path, ingested_at: str | None = None) -> list[
         rows.extend(parse_history_group(group, ingested_at=ingested_at))
 
     return rows
+
+
+def fetch_recent_klines(
+    *,
+    symbol: str,
+    interval: str,
+    limit: int = 30,
+    base_url: str = "https://api.binance.com",
+    timeout_seconds: float = 15.0,
+    ingested_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch recent klines from the Binance REST API and normalize them into Bronze records."""
+    query_string = parse.urlencode(
+        {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "limit": int(limit),
+        }
+    )
+    endpoint = f"{base_url.rstrip('/')}/api/v3/klines?{query_string}"
+    http_request = request.Request(
+        endpoint,
+        headers={"User-Agent": "real-time-market-data-lakehouse/1.0"},
+        method="GET",
+    )
+    with request.urlopen(http_request, timeout=timeout_seconds) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    return [
+        parse_historical_kline_row(
+            symbol=symbol.upper(),
+            interval=interval,
+            row=row,
+            source="binance_rest",
+            ingested_at=ingested_at,
+        )
+        for row in payload
+    ]
+
+
+def fetch_recent_history_records(
+    *,
+    symbols: list[str],
+    interval: str,
+    limit: int = 30,
+    base_url: str = "https://api.binance.com",
+    timeout_seconds: float = 15.0,
+    ingested_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch recent klines for a symbol list and normalize them into Bronze records."""
+    records: list[dict[str, Any]] = []
+    for symbol in symbols:
+        records.extend(
+            fetch_recent_klines(
+                symbol=symbol,
+                interval=interval,
+                limit=limit,
+                base_url=base_url,
+                timeout_seconds=timeout_seconds,
+                ingested_at=ingested_at,
+            )
+        )
+    return records
 
 
 def _parse_iso8601_to_datetime(value: str | None) -> datetime | None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -19,6 +20,38 @@ def _collect_first_column(rows: list[Any]) -> list[Any]:
             continue
         values.append(next(iter(row_dict.values())))
     return values
+
+
+def resolve_notebook_path(dbutils_handle: Any | None) -> str | None:
+    """Best-effort Databricks notebook path lookup."""
+    if dbutils_handle is None:
+        return None
+
+    try:  # pragma: no cover - depends on Databricks runtime objects
+        context = dbutils_handle.notebook.entry_point.getDbutils().notebook().getContext()
+        notebook_path = context.notebookPath()
+        getter: Callable[[], str] | None = getattr(notebook_path, "get", None)
+        if callable(getter):
+            value = getter()
+            return value or None
+    except Exception:
+        return None
+
+    return None
+
+
+def infer_bundle_target_from_notebook_path(notebook_path: str | None, *, bundle_name: str) -> str | None:
+    """Infer the bundle target from a deployed notebook workspace path."""
+    if not notebook_path:
+        return None
+
+    marker = f"/.bundle/{bundle_name}/"
+    if marker not in notebook_path:
+        return None
+
+    suffix = notebook_path.split(marker, 1)[1]
+    target = suffix.split("/", 1)[0].strip()
+    return target or None
 
 
 def build_runtime_context(spark: SparkSession, *, requested_catalog: str | None = None) -> dict[str, Any]:

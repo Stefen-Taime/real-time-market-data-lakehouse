@@ -52,3 +52,40 @@ def test_load_project_config_applies_prod_app_overrides() -> None:
     assert config["environment"] == "prod_app"
     assert config["paths"]["source_delta_base_path"] == "dbfs:/tmp/real-time-market-data-lakehouse/prod"
     assert config["app"]["serving_base_path"] == "/Volumes/workspace/default/market_data_app_prod/prod"
+
+
+def test_load_project_config_applies_azure_trial_overrides() -> None:
+    config = load_project_config("config", "azure_trial")
+
+    assert config["environment"] == "azure_trial"
+    assert config["catalog"] == "dbx_trial_marketdata"
+    assert config["databricks"]["register_tables"] is False
+    assert (
+        config["paths"]["delta_base_path"]
+        == "/Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial/lakehouse"
+    )
+    assert config["tables"]["gold"]["latest_price"] == "azure_trial_gold_latest_price"
+
+
+def test_load_project_config_applies_azure_trial_app_overrides() -> None:
+    config = load_project_config("config", "azure_trial_app")
+
+    assert config["environment"] == "azure_trial_app"
+    assert config["volume"]["catalog"] == "dbx_trial_marketdata"
+    assert (
+        config["paths"]["source_delta_base_path"]
+        == "/Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial/lakehouse"
+    )
+    assert config["app"]["warehouse_id"] == "14c0f2ddc3545df2"
+    assert config["app"]["serving_base_path"] == "/Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial"
+    assert config["direct_publish"]["enabled"] is True
+    assert config["direct_publish"]["history_source_mode"] == "binance_rest"
+
+
+def test_load_project_config_applies_azure_trial_governed_dashboard_overrides() -> None:
+    config = load_project_config("config", "azure_trial_governed")
+
+    assert config["environment"] == "azure_trial_governed"
+    assert config["app"]["warehouse_id"] == "14c0f2ddc3545df2"
+    assert config["app"]["query_mode"] == "table"
+    assert config["serving_tables"]["names"]["gold_latest_price"] == "azure_trial_app_gold_latest_price"

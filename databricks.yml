@@ -18,6 +18,12 @@ variables:
   app_volume_name:
     description: Unity Catalog volume name used by app-facing serving datasets.
     default: market_data_app
+  app_volume_catalog:
+    description: Unity Catalog catalog name used by the app-facing volume.
+    default: workspace
+  app_volume_schema:
+    description: Unity Catalog schema name used by the app-facing volume.
+    default: default
 
 include:
   - resources/volumes/market_data_app_volume.yml
@@ -44,6 +50,8 @@ targets:
       app_config_env: dev_app
       app_serving_base_path: /Volumes/workspace/default/market_data_app/dev
       app_volume_name: market_data_app
+      app_volume_catalog: workspace
+      app_volume_schema: default
   staging:
     mode: development
     variables:
@@ -52,6 +60,18 @@ targets:
       app_config_env: staging_app
       app_serving_base_path: /Volumes/workspace/default/market_data_app_staging/staging
       app_volume_name: market_data_app_staging
+      app_volume_catalog: workspace
+      app_volume_schema: default
+  azure_trial:
+    mode: development
+    variables:
+      data_config_env: azure_trial
+      governed_config_env: azure_trial_governed
+      app_config_env: azure_trial_app
+      app_serving_base_path: /Volumes/dbx_trial_marketdata/default/market_data_app_azure_trial/azure_trial
+      app_volume_name: market_data_app_azure_trial
+      app_volume_catalog: dbx_trial_marketdata
+      app_volume_schema: default
   prod:
     mode: production
     workspace:
@@ -67,3 +87,5 @@ targets:
       app_config_env: prod_app
       app_serving_base_path: /Volumes/workspace/default/market_data_app_prod/prod
       app_volume_name: market_data_app_prod
+      app_volume_catalog: workspace
+      app_volume_schema: default
