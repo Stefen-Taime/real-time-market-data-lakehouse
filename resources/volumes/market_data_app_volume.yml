@@ -3,6 +3,6 @@ resources:
     market_data_app_volume:
       catalog_name: workspace
       schema_name: default
-      name: market_data_app
+      name: ${var.app_volume_name}
       volume_type: MANAGED
       comment: App-facing Unity Catalog volume for Streamlit market observability assets.

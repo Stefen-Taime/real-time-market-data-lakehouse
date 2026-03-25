@@ -15,8 +15,12 @@ variables:
   app_serving_base_path:
     description: Unity Catalog volume path exposed to the Streamlit app.
     default: /Volumes/workspace/default/market_data_app/dev
+  app_volume_name:
+    description: Unity Catalog volume name used by app-facing serving datasets.
+    default: market_data_app
 
 include:
+  - resources/volumes/market_data_app_volume.yml
   - resources/jobs/backfill_history.yml
   - resources/jobs/ingest_live_market.yml
   - resources/jobs/transform_silver.yml
@@ -39,13 +43,15 @@ targets:
       governed_config_env: dev_governed
       app_config_env: dev_app
       app_serving_base_path: /Volumes/workspace/default/market_data_app/dev
+      app_volume_name: market_data_app
   staging:
     mode: development
     variables:
       data_config_env: staging
       governed_config_env: staging_governed
       app_config_env: staging_app
-      app_serving_base_path: /Volumes/workspace/default/market_data_app/staging
+      app_serving_base_path: /Volumes/workspace/default/market_data_app_staging/staging
+      app_volume_name: market_data_app_staging
   prod:
     mode: production
     workspace:
@@ -59,4 +65,5 @@ targets:
       data_config_env: prod
       governed_config_env: prod_governed
       app_config_env: prod_app
-      app_serving_base_path: /Volumes/workspace/default/market_data_app/prod
+      app_serving_base_path: /Volumes/workspace/default/market_data_app_prod/prod
+      app_volume_name: market_data_app_prod

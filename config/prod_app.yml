@@ -9,7 +9,7 @@ workspace:
 volume:
   catalog: workspace
   schema: default
-  name: market_data_app
+  name: market_data_app_prod
 
 serving_tables:
   catalog: workspace
@@ -24,7 +24,7 @@ serving_tables:
 
 paths:
   source_delta_base_path: dbfs:/tmp/real-time-market-data-lakehouse/prod
-  delta_base_path: dbfs:/Volumes/workspace/default/market_data_app/prod
+  delta_base_path: dbfs:/Volumes/workspace/default/market_data_app_prod/prod
 
 databricks:
   register_tables: false
@@ -35,8 +35,8 @@ databricks:
 app:
   warehouse_id: 38144212fd15dd19
   query_mode: table
-  volume_path: /Volumes/workspace/default/market_data_app
-  serving_base_path: /Volumes/workspace/default/market_data_app/prod
+  volume_path: /Volumes/workspace/default/market_data_app_prod
+  serving_base_path: /Volumes/workspace/default/market_data_app_prod/prod
   serving_catalog: workspace
   serving_schema: default
   serving_volume_history_hours: 24
